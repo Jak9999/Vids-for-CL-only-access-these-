@@ -309,8 +309,15 @@ def speedlines(cv, k, seed=4):
         cv.drawLine(x, y, x + ln, y, P(WHITE, 200 * k, stroke=r.uniform(4, 14)))
 
 # ---------- scenes ----------
-MSG = "I am agree"
-F_MSG = font("Bold", 100)
+CFGS = {
+ "agree": dict(words=["I", "am", "agree"], rm=1, size=100, bw=720, pill="English tip", slam1=("AGREE", 200), mid=["is", "already", "a"],
+               slam2=("VERB", 170), sub="So: no \u201cam\u201d needed.", out="i_agree_cartoon"),
+ "discuss": dict(words=["Let\u2019s", "discuss", "about", "it."], rm=2, size=80, bw=940, pill="IELTS Writing tip", slam1=("DISCUSS", 165),
+                 mid=["already", "means"], slam2=("TALK ABOUT", 118), sub="So: no \u201cabout\u201d needed.", out="discuss_about_cartoon"),
+}
+CFG = CFGS[os.environ.get("REEL", "agree")]
+WORDS = CFG["words"]; RM = CFG["rm"]; MSG = " ".join(WORDS)
+F_MSG = font("Bold", CFG["size"]); BW = CFG["bw"]
 def blink_at(t, every=2.7, off=0.3):
     ph = (t + off) % every
     return clamp(1 - abs(ph - .08) / .08) if ph < .16 else 0.0
@@ -321,7 +328,7 @@ def scene1(cv, t, gt):  # room, student types the mistake (3.4 s)
     cv.save(); cv.translate(W / 2 + wx, H / 2); cv.scale(z, z); cv.translate(-W / 2, -H / 2 + oy)
     room(cv, gt); student(cv, 540, 860, .78, t); desk_front(cv, gt)
     k = prog(t, .7, .35)
-    bubble(cv, 540, 560, 720, 190, lerp(.4, 1, spring(k)), 255 * clamp(k * 3))
+    bubble(cv, 540, 560, BW, 190, lerp(.4, 1, spring(k)), 255 * clamp(k * 3))
     if 0.9 < t < 1.4:
         for i in range(3):
             j = .5 + .5 * math.sin(t * 14 - i * .9); cv.drawCircle(480 + i * 60, 560 - 12 * j, 16, P(NAVY, 120 + 120 * j))
@@ -332,15 +339,19 @@ def scene1(cv, t, gt):  # room, student types the mistake (3.4 s)
         if n < len(MSG) and (t * 3) % 1 < .6:
             cx = x0 + F_MSG.measureText(MSG[:n]) + 8; rrect(cv, cx, 520, cx + 8, 604, 4, P(PINK))
     cv.restore()
-    pill(cv, W / 2, 230, "English tip", font("Bold", 42), NAVY, WHITE, prog(t, .25, .5))
+    pill(cv, W / 2, 230, CFG["pill"], font("Bold", 42), NAVY, WHITE, prog(t, .25, .5))
     speedlines(cv, prog(t, 3.1, .3))
 
 def layout(gap_k):
-    fI = F_MSG.measureText("I"); sp = F_MSG.measureText(" "); fam = F_MSG.measureText("am"); fag = F_MSG.measureText("agree")
-    before = fI + sp + fam + sp + fag; after = fI + sp + fag
-    x0b = 540 - before / 2; x0a = 540 - after / 2
-    xI = lerp(x0b, x0a, gap_k); xag = lerp(x0b + fI + sp + fam + sp, x0a + fI + sp, gap_k)
-    return xI, x0b + fI + sp, xag, fam
+    sp = F_MSG.measureText(" "); ws = [F_MSG.measureText(w) for w in WORDS]
+    before = sum(ws) + sp * (len(ws) - 1); after = before - ws[RM] - sp
+    xb, xa, x, y = [], [], 540 - before / 2, 540 - after / 2
+    for i, w in enumerate(ws):
+        xb.append(x); x += w + sp
+        if i != RM: xa.append(y); y += w + sp
+        else: xa.append(None)
+    pos = [lerp(xb[i], xa[i], gap_k) if i != RM else xb[i] for i in range(len(ws))]
+    return pos, ws
 
 def scene2(cv, t, gt):  # Jak reacts, "am" shatters (3.2 s)
     wx = 1300 * (1 - eio(prog(t, 0, .3))) ** 2
@@ -356,23 +367,24 @@ def scene2(cv, t, gt):  # Jak reacts, "am" shatters (3.2 s)
     jak(cv, 540, 1060 + (1 - pop) * 500, 1.0, gt, look=look, brow=brow, mouth=mouth, blink=blink_at(t), tilt=tilt)
     k = prog(t, .2, .35); bk = clamp(k * 3)
     green = ease(prog(t, 1.9, .3))
-    bubble(cv, 540, 470, 760, 200, lerp(.4, 1, spring(k)), 255 * bk, fill=mixc(WHITE, (226, 255, 242), green))
+    bubble(cv, 540, 470, BW + 40, 200, lerp(.4, 1, spring(k)), 255 * bk, fill=mixc(WHITE, (226, 255, 242), green))
     if bk > 0:
         gap = eio(prog(t, 1.45, .45))
-        xI, xam, xag, fam = layout(gap)
+        pos, ws = layout(gap)
         col = mixc(NAVY, MINT_D, green)
         cv.save(); cv.translate(540, 470); cv.scale(lerp(.4, 1, spring(k)), lerp(.4, 1, spring(k))); cv.translate(-540, -470)
-        text(cv, "I", xI, 472, F_MSG, col, align="left"); text(cv, "agree", xag, 472, F_MSG, col, align="left")
+        for i, w in enumerate(WORDS):
+            if i != RM: text(cv, w, pos[i], 472, F_MSG, col, align="left")
+        xam, fam = pos[RM], ws[RM]
         if t < 1.3:
             wob = 4 * math.sin(t * 50) if t > .9 else 0
             if t > .7:
-                rrect(cv, xam - 10, 420, xam + fam + 10, 524, 18, P(PINK, 70 * ease(prog(t, .7, .2))))
-            text(cv, "am", xam + wob, 472, F_MSG, PINK if t > .7 else NAVY, align="left")
+                rrect(cv, xam - 10, 425, xam + fam + 10, 519, 18, P(PINK, 70 * ease(prog(t, .7, .2))))
+            text(cv, WORDS[RM], xam + wob, 472, F_MSG, PINK if t > .7 else NAVY, align="left")
         cv.restore()
-        xI, xam, xag, fam = layout(0)
         shards(cv, t - 1.3, 11, xam + fam / 2, 470, fam, 90, [PINK, NAVY, AMBER, PINK], n=80)
         burst_lines(cv, (t - 1.3) / .45, xam + fam / 2, 470, AMBER)
-        check_badge(cv, 900, 385, back(prog(t, 1.95, .4)))
+        check_badge(cv, min(540 + BW / 2, 960), 385, back(prog(t, 1.95, .4)))
         confetti(cv, t - 1.95, 5, 540, 420)
     cv.restore()
 
@@ -382,11 +394,11 @@ def scene3(cv, t, gt):  # block slams (2.8 s)
         if a <= t < a + .3: sh += 16 * math.sin(t * 95) * (a + .3 - t) / .3
     cv.save(); cv.translate(sh, sh * .5)
     flat_bg(cv, MINT, (134, 238, 198), gt, 3)
-    slab(cv, 540, 700, "AGREE", font("Bold", 200), NAVY, WHITE, prog(t, .05, .35), -4)
+    slab(cv, 540, 700, CFG["slam1"][0], font("Bold", CFG["slam1"][1]), NAVY, WHITE, prog(t, .05, .35), -4)
     shards(cv, t - .2, 21, 540, 700, 700, 200, [NAVY, PINK, WHITE], n=36, power=.7)
     k = prog(t, .45, .35)
     if k > 0:
-        f = font("Bold", 74); words = ["is", "already", "a"]
+        f = font("Bold", 74); words = CFG["mid"]
         ws = [f.measureText(w) for w in words]; sp = f.measureText(" "); x = 540 - (sum(ws) + sp * 2) / 2
         for i, w in enumerate(words):
             kk = prog(t, .45 + i * .1, .35)
@@ -394,13 +406,13 @@ def scene3(cv, t, gt):  # block slams (2.8 s)
                 cv.save(); s = lerp(1.6, 1, spring(kk)); cv.translate(x + ws[i] / 2, 900 + (1 - ease(kk)) * 30); cv.scale(s, s)
                 text(cv, w, 0, 0, f, NAVY, 255 * clamp(kk * 3)); cv.restore()
             x += ws[i] + sp
-    slab(cv, 540, 1080, "VERB", font("Bold", 170), PINK, WHITE, prog(t, .75, .35), 3)
+    slab(cv, 540, 1080, CFG["slam2"][0], font("Bold", CFG["slam2"][1]), PINK, WHITE, prog(t, .75, .35), 3)
     shards(cv, t - .9, 31, 540, 1080, 520, 180, [PINK, NAVY, AMBER], n=36, power=.7)
     k = prog(t, 1.5, .4)
     if k > 0:
         f = font("Medium", 58); s = lerp(.6, 1, spring(k))
         cv.save(); cv.translate(540, 1290); cv.scale(s, s)
-        text(cv, "So: no “am” needed.", 0, 0, f, NAVY, 255 * clamp(k * 3)); cv.restore()
+        text(cv, CFG["sub"], 0, 0, f, NAVY, 255 * clamp(k * 3)); cv.restore()
     cv.restore()
     wx = -1300 * eio(prog(t, 2.5, .3)) ** 2
     if wx < -1:  # whip out
@@ -424,10 +436,10 @@ def scene4(cv, t, gt):  # outro wave + wink (3.6 s)
     slab(cv, 540, 250, "TEACHER JAK", font("Bold", 92), NAVY, WHITE, prog(t, .1, .35), -2)
     k = prog(t, .6, .4)
     if k > 0:
-        f = font("Bold", 52); w = f.measureText("Follow for a daily English fix") + 90; s = lerp(.6, 1, spring(k))
+        f = font("Bold", 52); w = f.measureText(os.environ.get("OUTRO", "Follow for a daily English fix")) + 90; s = lerp(.6, 1, spring(k))
         cv.save(); cv.translate(540, 420); cv.scale(s, s); cv.saveLayerAlpha(None, int(255 * clamp(k * 3)))
         rrect(cv, -w / 2, -52, w / 2, 60, 56, P(NAVY, 70, blur=6)); rrect(cv, -w / 2, -56, w / 2, 56, 56, P(WHITE))
-        text(cv, "Follow for a daily English fix", 0, 2, f, NAVY); cv.restore(); cv.restore()
+        text(cv, os.environ.get("OUTRO", "Follow for a daily English fix"), 0, 2, f, NAVY); cv.restore(); cv.restore()
     k = prog(t, 1.0, .4)
     if k > 0: text(cv, "@ieltswithteacherjak", 540, 530, font("Medium", 46), WHITE, 255 * ease(k))
 
